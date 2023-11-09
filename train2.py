@@ -60,11 +60,17 @@ optimizer= optim.Adam(model.parameters(), lr=0.001)
 
 EPOCHS = 100
 
-losses_ = []
-accuracies_ = []
-precisions_ = []
-recall_ = []
-f1_ = []
+train_losses_ = []
+train_accuracies_ = []
+train_precisions_ = []
+train_recall_ = []
+train_f1_ = []
+
+val_losses_ = []
+val_accuracies_ = []
+val_precisions_ = []
+val_recall_ = []
+val_f1_ = []
 
 # metric for best model
 best = 1000
@@ -93,14 +99,57 @@ for epoch in tqdm(range(EPOCHS), desc='Training Progress'):
         correct += (prediction==labels).sum().item()
         
     avg_loss, accuracy, precision, recall, f1, _ = metrics(train_loader, running_loss, correct, predictions_, labels_)
-    losses_.append(avg_loss)
-    accuracies_.append(accuracy)
-    precisions_.append(precision)
-    recall_.append(recall)
-    f1_.append(f1)
+    train_losses_.append(avg_loss)
+    train_accuracies_.append(accuracy)
+    train_precisions_.append(precision)
+    train_recall_.append(recall)
+    train_f1_.append(f1)
+    
+    with torch.no_grad():
+        model.eval()
+        losses, correct = 0, 0
+        y_hats, targets = [], []
+        for x, y in validation_loader:
+            x, y = x.to(device), y.to(device)
+            pred = model(x)
+            loss = F.cross_entropy(pred, y)
+            losses += loss.item()
+
+            y_hat = torch.max(pred, 1)[1]
+            y_hats += y_hat.tolist()
+            targets += y.tolist()
+            correct += (y_hat == y).sum().item()
+
+        val_loss, val_accuracy, val_precision, val_recall, val_f1, val_cm = metrics(validation_loader, losses, correct, y_hats, targets)
+        print(f"Epoch {epoch + 1}/{EPOCHS}, Validation Loss: {val_loss}, Validation Accuracy: {val_accuracy}, Validation f1: {val_f1}")
+        val_losses_.append(avg_loss)
+        val_accuracies_.append(accuracy)
+        val_precisions_.append(precision)
+        val_recall_.append(recall)
+        val_f1_.append(f1)
+        
     if avg_loss < best:
         best = avg_loss
         torch.save(model.state_dict(), 'best.pth')
     print(f"Epoch {epoch + 1}/{EPOCHS}, Loss: {avg_loss}, Accuracy: {accuracy}, f1: {f1}")
+    
+import pickle
+
+train_metrics = {'loss': train_losses_, 
+                 'acc': train_accuracies_, 
+                 'precision': train_precisions_, 
+                 'recall': train_recall_, 
+                 'f1': train_f1_}
+val_metrics = {'loss': val_losses_, 
+                 'acc': val_accuracies_, 
+                 'precision': val_precisions_, 
+                 'recall': val_recall_, 
+                 'f1': val_f1_}
+
+with open('train', 'wb') as fp:
+    pickle.dump(train_metrics, fp)   
+with open('val', 'wb') as fp:
+    pickle.dump(val_metrics, fp)   
+    
     
 torch.save(model.state_dict(), "last.pth")
